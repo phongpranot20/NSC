@@ -104,7 +104,12 @@ try:
             return
         try:
             face_net = BiSeNet(n_classes=19, download_pretrained_backbone=False).to(_DEVICE)
-            face_net.load_state_dict(torch.load(face_path, map_location=_DEVICE))
+            # weights_only=False ตรงๆ: PyTorch 2.6 เปลี่ยนดีฟอลต์เป็น True ซึ่งบล็อกการ unpickle โครงสร้าง
+            # checkpoint ที่ซับซ้อนกว่า tensor ธรรมดา (เช่น dict ที่มี "model_state_dict" ปนกับ metadata อื่น)
+            # ทำให้ torch.load() พังและระบบ fallback ไป classic OpenCV แทนทั้งที่ควรใช้โมเดล U-Net จริง
+            # ไฟล์ weight ทั้งสองไฟล์นี้เป็นของเราเองที่เทรน/ดาวน์โหลดมาจากแหล่งที่เชื่อถือได้ (ไม่ใช่ไฟล์
+            # จากผู้ใช้ทั่วไปที่ไม่รู้จัก) จึงตั้ง weights_only=False ได้อย่างปลอดภัย
+            face_net.load_state_dict(torch.load(face_path, map_location=_DEVICE, weights_only=False))
             face_net.eval()
 
             wrinkle_net = UNet(
@@ -114,7 +119,7 @@ try:
                 pretrained=False,
                 freeze_encoder=True,
             ).to(_DEVICE)
-            checkpoint = torch.load(wrinkle_path, map_location=_DEVICE)
+            checkpoint = torch.load(wrinkle_path, map_location=_DEVICE, weights_only=False)
             state_dict = (
                 checkpoint["model_state_dict"]
                 if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint
