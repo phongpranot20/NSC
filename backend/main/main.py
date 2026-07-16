@@ -50,21 +50,45 @@ try:
     import importlib.metadata as _ilm
     print("[diag] sys.path =", sys.path)
     _dists = sorted(
-        f"{d.metadata['Name']}=={d.version}"
+        (d.metadata["Name"], d.version, str(getattr(d, "_path", d.locate_file(""))))
         for d in _ilm.distributions()
         if d.metadata and d.metadata["Name"] and "cv" in d.metadata["Name"].lower()
     )
-    print("[diag] cv*-related distributions installed:", _dists)
+    for _name, _ver, _loc in _dists:
+        print(f"[diag] dist: {_name}=={_ver} @ {_loc}")
+
+    # หา site-packages ทุกอันใน sys.path แล้ว list ให้ครบ ไม่กรองแค่ "cv2"/"site-packages" เหมือนรอบก่อน
+    # (รอบก่อนกรองแคบไป เห็นแค่ระดับโฟลเดอร์แม่ ไม่เห็นเนื้อในจริงๆ)
     for _p in sys.path:
-        try:
-            _entries = os.listdir(_p)
-        except Exception:
+        if "site-packages" not in _p:
             continue
-        if "cv2" in _entries:
-            print(f"[diag] พบโฟลเดอร์ cv2/ อยู่ใน {_p}: {sorted(os.listdir(os.path.join(_p, 'cv2')))[:20]}")
-        _site_pkgs_like = [e for e in _entries if "site-packages" in e or e == "cv2"]
-        if _site_pkgs_like:
-            print(f"[diag] {_p} มี: {_site_pkgs_like[:20]}")
+        try:
+            _entries = sorted(os.listdir(_p))
+        except Exception as _e:
+            print(f"[diag] listdir({_p}) พัง: {_e!r}")
+            continue
+        print(f"[diag] {_p} มีทั้งหมด {len(_entries)} รายการ")
+        _cv_like = [e for e in _entries if "cv" in e.lower()]
+        print(f"[diag] {_p} รายการที่มีคำว่า 'cv': {_cv_like}")
+
+    # เช็ค RECORD ของ opencv-python-headless/opencv-contrib-python-headless ตรงๆ ว่าไฟล์ cv2/*.so ที่มัน
+    # ควรจะติดตั้งมาด้วย ยังอยู่จริงไหมในดิสก์ (เทียบ RECORD ที่ pip เขียนไว้ตอนติดตั้ง กับไฟล์จริงบนดิสก์)
+    for _dist_name in ("opencv-python-headless", "opencv-contrib-python-headless"):
+        try:
+            _d = _ilm.distribution(_dist_name)
+        except _ilm.PackageNotFoundError:
+            print(f"[diag] {_dist_name}: ไม่พบ distribution เลย (metadata ก็ไม่มี)")
+            continue
+        _files = _d.files or []
+        _so_files = [f for f in _files if str(f).startswith("cv2") and (str(f).endswith(".so") or "__init__" in str(f))]
+        print(f"[diag] {_dist_name} RECORD มีไฟล์ cv2/ ทั้งหมด {len([f for f in _files if str(f).startswith('cv2')])} รายการ, ตัวอย่าง .so/__init__: {_so_files[:10]}")
+        for _f in _so_files[:5]:
+            try:
+                _full = _d.locate_file(_f)
+                _exists = os.path.exists(_full)
+                print(f"[diag]   {_f} -> {_full} มีอยู่จริงไหม: {_exists}")
+            except Exception as _e:
+                print(f"[diag]   {_f} เช็คไม่ได้: {_e!r}")
 except Exception as _diag_e:
     print(f"[diag] diagnostic เองก็พังด้วย: {_diag_e!r}")
 
