@@ -1,25 +1,9 @@
 fastapi
 uvicorn
 python-multipart
-# ใช้เวอร์ชัน "headless" แทน opencv-python/opencv-contrib-python ปกติเสมอ -- เวอร์ชันปกติต้องพึ่งไลบรารี
-# กราฟิกของระบบ (libGL.so.1, GTK ฯลฯ) ที่ไม่มีอยู่บน Linux serverless แบบ Vercel ทำให้ "import cv2" พัง
-# ตั้งแต่ตอนโหลดไฟล์ (เห็น error "could not import main.py" เพราะทั้งไฟล์ import cv2 ไม่ผ่าน) เวอร์ชัน
-# headless ตัดส่วนแสดงผลหน้าต่าง (imshow ฯลฯ) ออกไป ซึ่งโค้ดเราไม่เคยใช้อยู่แล้ว ทำงานเหมือนเดิมทุกอย่าง
-# แถมขนาดเล็กกว่าด้วย
-opencv-python-headless<5
+opencv-python<5
 numpy<2
 ultralytics
-# ultralytics เขียน "opencv-python" (ตัวเต็ม ไม่ใช่ -headless) ไว้ตรงๆ เป็น dependency ของมันเอง
-# (opencv-python>=4.6.0 ใน pyproject.toml) เจอปัญหาชื่อไม่ตรงกันแบบเดียวกับ opencv-contrib-python
-# ด้านล่าง -- ต้องกันด้วย decoy package เหมือนกัน ไม่งั้น pip/uv จะไปดึงตัวจริง (ต้องพึ่ง libGL.so.1 /
-# Qt5Gui.so) มาลงอีกตัวจน import cv2 พังแบบเดียวกัน
-#
-# หมายเหตุ path: ใช้ path เต็มแบบ absolute (file:///vercel/path0/...) แทน relative path (./vendor/...)
-# เพราะ Vercel build ("uv lock") เจอบั๊ก resolve relative path ผิด -- เอา src dir "backend/main" มาต่อซ้ำ
-# สองรอบ (error: "Distribution not found at:
-# file:///vercel/path0/backend/main/backend/main/vendor/...") /vercel/path0 คือ root ของ repo
-# ที่ Vercel build container ใช้เสมอ (ค่าคงที่มาตรฐานของ Vercel build)
-file:///vercel/path0/backend/main/vendor/opencv_python-99.0.0-py3-none-any.whl
 
 # สำหรับหาตำแหน่ง landmark ใบหน้าแม่นยำระดับพิกเซล (เส้นขอบใบหน้าจริง/ตำแหน่งแก้ม/ตา/ปาก)
 # ใช้แทนการประมาณตำแหน่งด้วย Haar cascade + วงรีเดาสัดส่วนแบบเดิม (แม่นยำกว่ามาก ไม่ล้นไปโดนหู/พื้นหลัง)
@@ -27,28 +11,9 @@ file:///vercel/path0/backend/main/vendor/opencv_python-99.0.0-py3-none-any.whl
 # ออกไปแล้ว ทำให้ AttributeError: module 'mediapipe' has no attribute 'solutions' ถ้าลงแบบไม่ระบุเวอร์ชัน
 mediapipe==0.10.14
 # mediapipe ดึง opencv-contrib-python มาเป็น dependency ด้วยเสมอ (ไม่ได้ระบุเวอร์ชันเอง) ถ้าไม่ pin ตรงนี้
-# pip จะลงเวอร์ชันล่าสุด (5.x) มาทับ/ชนกับ opencv-python-headless<5 ด้านบน ทำให้ cv2.CascadeClassifier
-# หายไปอีกรอบ (ห้ามลง opencv-python และ opencv-contrib-python คนละเมเจอร์เวอร์ชันพร้อมกันเด็ดขาด ใช้ cv2
-# namespace ร่วมกัน) ใช้ headless เช่นกันด้วยเหตุผลเดียวกับด้านบน
-opencv-contrib-python-headless<5
-
-# ***สำคัญ*** แค่ลง opencv-contrib-python-headless ด้านบนไม่พอ! mediapipe==0.10.14 เขียน
-# "opencv-contrib-python" (ตัวเต็ม ไม่ใช่ -headless) ไว้ตรงๆ ใน requirements.txt ของมันเอง
-# (ดู https://github.com/google-ai-edge/mediapipe/blob/v0.10.14/requirements.txt) แล้ว pip มองว่า
-# "opencv-contrib-python" กับ "opencv-contrib-python-headless" เป็นคนละแพ็กเกจกันเลย (ชื่อไม่ตรงกัน)
-# จึงลงทั้งคู่พร้อมกัน! ตัวเต็ม (ไม่ headless) ต้องพึ่ง libGL.so.1 และแถมไฟล์ Qt5Gui.so ของตัวเองมาด้วย
-# (bundled ใน .libs/) ซึ่งมีโค้ดเรียก OpenGL จริง (glMatrixMode) ต่อให้ preload stub libGL.so.1 เปล่าๆ
-# (native_libs/) ก็ยังพังอยู่ดีเพราะ symbol จริงไม่มีให้ resolve (เจอ error
-# "undefined symbol: glMatrixMode" ตอน import cv2)
-#
-# ทางแก้ที่ถูกต้อง: ทำแพ็กเกจหลอก (decoy) ชื่อ "opencv-contrib-python" เวอร์ชันปลอมสูงๆ (99.0.0, ไม่มี
-# โค้ดข้างในเลย) เก็บไว้ที่ vendor/ แล้วสั่งลงจากไฟล์ในเครื่องตรงนี้ก่อน เพื่อ "หลอก" ตัว resolver ของ
-# pip/uv ว่า requirement "opencv-contrib-python" (ที่ mediapipe ต้องการ) ถูก satisfy แล้ว จะได้ไม่ไป
-# ดึงตัวจริงจาก PyPI มาลงอีก -- cv2 ทำงานได้ปกติทุกอย่างเพราะโมดูล cv2 จริงๆ มาจาก
-# opencv-contrib-python-headless ด้านบนอยู่แล้ว (ทดสอบแล้วว่า pip และ uv resolve แบบนี้ได้จริง ไม่ต้อง
-# ต่อเน็ตไปดึงตัวจริงเลย) -- ใช้ absolute path /vercel/path0/... เหตุผลเดียวกับ opencv-python ด้านบน
-# (relative path ./vendor/... โดน uv lock ต่อ "backend/main" ซ้ำสองรอบ)
-file:///vercel/path0/backend/main/vendor/opencv_contrib_python-99.0.0-py3-none-any.whl
+# pip จะลงเวอร์ชันล่าสุด (5.x) มาทับ/ชนกับ opencv-python<5 ด้านบน ทำให้ cv2.CascadeClassifier หายไปอีกรอบ
+# (ห้ามลง opencv-python และ opencv-contrib-python คนละเมเจอร์เวอร์ชันพร้อมกันเด็ดขาด ใช้ cv2 namespace ร่วมกัน)
+opencv-contrib-python<5
 
 # สำหรับคำแนะนำที่สร้างโดย AI (Gemini) ในแดชบอร์ดผลลัพธ์
 google-genai

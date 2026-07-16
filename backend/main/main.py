@@ -1,103 +1,9 @@
 import os
-import sys
 import time
 import uuid
 import glob
 import base64
 import tempfile
-
-# เพิ่มโฟลเดอร์ของไฟล์นี้เอง (backend/main/) เข้า sys.path ก่อน import อะไรทั้งหมด -- ตอนรัน local ด้วย
-# `uvicorn main:app` จาก backend/main จะมีโฟลเดอร์นี้อยู่ใน sys.path ให้อัตโนมัติอยู่แล้ว (เจอ utils/,
-# wrinkle_engine/ เป็นปกติ) แต่ Vercel เรียกไฟล์นี้ผ่าน importlib จาก path เต็ม (/var/task/backend/main/main.py)
-# โดยไม่เพิ่มโฟลเดอร์นี้เข้า sys.path ให้เอง ทำให้ "from utils.skin_utils import ..." ด้านล่างพังด้วย
-# ModuleNotFoundError: No module named 'utils' ต้องเพิ่มเองตรงนี้ก่อน import ใดๆ ที่พึ่ง utils/wrinkle_engine
-#
-# เหตุผลเดียวกันนี้ยังกระทบทุกจุดที่เปิดไฟล์ด้วย path แบบ relative ("index.html", "background.jpg",
-# "models/best.pt") เพราะ cwd ตอนรันจริงบน Vercel ไม่ใช่โฟลเดอร์นี้เหมือนตอนรัน local จึงต้องคำนวณ
-# path แบบเต็ม (absolute) จาก __file__ เก็บไว้ใช้ร่วมกันทั้งไฟล์แทนการพึ่ง cwd ทุกจุด
-_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _BASE_DIR)
-
-# ไฟล์หน้าเว็บ (index.html, background.jpg) แยกออกไปอยู่ที่โฟลเดอร์ frontend/ ที่ root ของโปรเจกต์แล้ว
-# (ไม่ปนอยู่กับโค้ด backend ในโฟลเดอร์นี้อีกต่อไป) คำนวณ path ไปหาโฟลเดอร์นั้นจาก _BASE_DIR: ถอยขึ้นไป
-# 2 ระดับ (backend/main -> backend -> root) แล้วเข้าไปที่ frontend/
-_REPO_ROOT = os.path.dirname(os.path.dirname(_BASE_DIR))
-_FRONTEND_DIR = os.path.join(_REPO_ROOT, "frontend")
-
-# แก้ปัญหา "ImportError: libGL.so.1: cannot open shared object file" บน Vercel (Linux serverless runtime
-# แบบ minimal ไม่มีไลบรารีกราฟิกของระบบติดมาเลย) -- ต้นตอที่แท้จริงคือ mediapipe==0.10.14 บังคับดึง
-# opencv-contrib-python (เวอร์ชันปกติ ไม่ใช่ headless) มาเป็น dependency เสมอโดยไม่สนใจว่าเรา pin
-# opencv-contrib-python-headless ไว้เองแล้วก็ตาม (bug ที่มีคนรายงานไว้แล้วที่
-# github.com/google-ai-edge/mediapipe/issues/6121 ยังไม่ถูกแก้จากฝั่ง Google) ทำให้ตัว non-headless
-# หลุดติดตั้งมาด้วยเสมอ และไปโหลดไม่สำเร็จเพราะหา libGL.so.1 (และไลบรารี GUI/X11 อื่นๆ) ไม่เจอในระบบ
-#
-# แก้ด้วยการสร้างไฟล์ .so "หลอก" (stub) ที่ไม่มีฟังก์ชันจริงข้างในเลย เก็บไว้ที่ native_libs/ แล้ว
-# "preload" (โหลดล่วงหน้า) ด้วย ctypes.CDLL(path, mode=RTLD_GLOBAL) ก่อน import cv2 เสมอ
-# (ทดสอบแล้วว่าการตั้ง os.environ["LD_LIBRARY_PATH"] เฉยๆ ระหว่างรัน "ใช้ไม่ได้จริง" เพราะ glibc
-# แคชค่านี้ไว้ตั้งแต่ตอน process เริ่มทำงาน ไม่ได้อ่านซ้ำตอน dlopen แต่ละครั้ง -- ต้อง preload แบบ
-# ระบุ path เต็มด้วย ctypes ตรงๆ เท่านั้นถึงจะทำให้ dynamic linker "จำ" ว่ามีไลบรารีชื่อนี้โหลดอยู่แล้ว
-# แล้วนำไปใช้ตอน cv2 native module พยายาม dlopen หาไลบรารีเดียวกันนี้อีกที) โค้ดเราไม่เคยเรียกฟังก์ชัน
-# GUI/OpenGL จริงอยู่แล้ว (ไม่มี imshow ฯลฯ) จึงไม่กระทบการทำงานใดๆ เป็นการหลอก dynamic linker ตอน
-# import เท่านั้น ไม่ใช่การเปิดใช้ GPU/GUI จริง
-_NATIVE_LIBS_DIR = os.path.join(_BASE_DIR, "native_libs")
-if os.path.isdir(_NATIVE_LIBS_DIR):
-    import ctypes
-    for _stub_name in os.listdir(_NATIVE_LIBS_DIR):
-        try:
-            ctypes.CDLL(os.path.join(_NATIVE_LIBS_DIR, _stub_name), mode=ctypes.RTLD_GLOBAL)
-        except OSError as _e:
-            print(f"[main] preload stub lib ล้มเหลว ({_stub_name}): {_e} -- ข้ามไป ไม่ทำให้แอปพัง")
-
-# --- diagnostic ชั่วคราว: หา root cause ว่าทำไม "import cv2" หาโมดูลไม่เจอเลยบน Vercel (ไม่ใช่ error
-# แบบ .so หาไม่เจอเหมือนก่อนหน้า แต่เป็น ModuleNotFoundError ตรงๆ) พิมพ์ข้อมูล site-packages ออกมาดูก่อน
-# import จริง เพื่อเช็คว่า opencv-python-headless / opencv-contrib-python-headless ถูกติดตั้งจริงไหม บน
-# Vercel runtime -- ลบบล็อกนี้ทิ้งได้หลังจากแก้ปัญหาเสร็จแล้ว
-try:
-    import importlib.metadata as _ilm
-    print("[diag] sys.path =", sys.path)
-    _dists = sorted(
-        (d.metadata["Name"], d.version, str(getattr(d, "_path", d.locate_file(""))))
-        for d in _ilm.distributions()
-        if d.metadata and d.metadata["Name"] and "cv" in d.metadata["Name"].lower()
-    )
-    for _name, _ver, _loc in _dists:
-        print(f"[diag] dist: {_name}=={_ver} @ {_loc}")
-
-    # หา site-packages ทุกอันใน sys.path แล้ว list ให้ครบ ไม่กรองแค่ "cv2"/"site-packages" เหมือนรอบก่อน
-    # (รอบก่อนกรองแคบไป เห็นแค่ระดับโฟลเดอร์แม่ ไม่เห็นเนื้อในจริงๆ)
-    for _p in sys.path:
-        if "site-packages" not in _p:
-            continue
-        try:
-            _entries = sorted(os.listdir(_p))
-        except Exception as _e:
-            print(f"[diag] listdir({_p}) พัง: {_e!r}")
-            continue
-        print(f"[diag] {_p} มีทั้งหมด {len(_entries)} รายการ")
-        _cv_like = [e for e in _entries if "cv" in e.lower()]
-        print(f"[diag] {_p} รายการที่มีคำว่า 'cv': {_cv_like}")
-
-    # เช็ค RECORD ของ opencv-python-headless/opencv-contrib-python-headless ตรงๆ ว่าไฟล์ cv2/*.so ที่มัน
-    # ควรจะติดตั้งมาด้วย ยังอยู่จริงไหมในดิสก์ (เทียบ RECORD ที่ pip เขียนไว้ตอนติดตั้ง กับไฟล์จริงบนดิสก์)
-    for _dist_name in ("opencv-python-headless", "opencv-contrib-python-headless"):
-        try:
-            _d = _ilm.distribution(_dist_name)
-        except _ilm.PackageNotFoundError:
-            print(f"[diag] {_dist_name}: ไม่พบ distribution เลย (metadata ก็ไม่มี)")
-            continue
-        _files = _d.files or []
-        _so_files = [f for f in _files if str(f).startswith("cv2") and (str(f).endswith(".so") or "__init__" in str(f))]
-        print(f"[diag] {_dist_name} RECORD มีไฟล์ cv2/ ทั้งหมด {len([f for f in _files if str(f).startswith('cv2')])} รายการ, ตัวอย่าง .so/__init__: {_so_files[:10]}")
-        for _f in _so_files[:5]:
-            try:
-                _full = _d.locate_file(_f)
-                _exists = os.path.exists(_full)
-                print(f"[diag]   {_f} -> {_full} มีอยู่จริงไหม: {_exists}")
-            except Exception as _e:
-                print(f"[diag]   {_f} เช็คไม่ได้: {_e!r}")
-except Exception as _diag_e:
-    print(f"[diag] diagnostic เองก็พังด้วย: {_diag_e!r}")
-
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
@@ -126,7 +32,7 @@ app.add_middleware(
 )
 
 # 3. โหลดสมอง AI สำหรับสแกนจุดสิว
-model = YOLO(os.path.join(_BASE_DIR, "models", "best.pt"))
+model = YOLO("models/best.pt")
 
 # 3b. ตั้งค่า Gemini AI สำหรับสร้างคำแนะนำการดูแลผิวแบบข้อความ (ไม่บังคับ -- ถ้ายังไม่ใส่ key
 #     แอปจะยังใช้งานได้ปกติทุกอย่าง แค่ช่องคำแนะนำ AI จะแจ้งว่ายังไม่ได้ตั้งค่า)
@@ -148,7 +54,7 @@ NO_CACHE_HEADERS = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pra
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
     try:
-        with open(os.path.join(_FRONTEND_DIR, "index.html"), "r", encoding="utf-8") as f:
+        with open("index.html", "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), status_code=200, headers=NO_CACHE_HEADERS)
     except FileNotFoundError:
         return HTMLResponse(content="<h1>ไม่พบไฟล์ index.html</h1>", status_code=404, headers=NO_CACHE_HEADERS)
@@ -156,7 +62,7 @@ async def read_index():
 # 4b. รูปพื้นหลังหน้า Start (landing screen)
 @app.get("/background.jpg")
 async def read_background_image():
-    return FileResponse(os.path.join(_FRONTEND_DIR, "background.jpg"), headers={"Cache-Control": "public, max-age=86400"})
+    return FileResponse("background.jpg", headers={"Cache-Control": "public, max-age=86400"})
 
 # 5. ฟังก์ชันยื่นส่งรูปภาพแยก 4 ปัญหาผิวข้ามระบบไปหน้าเว็บหลัก
 #    ต้องแนบ session_id ของคำขอวิเคราะห์นั้นๆ มาด้วย (ได้จาก response ของ /analyze-acne)
@@ -275,7 +181,7 @@ def analyze_red_areas(img, session_id=None, landmarks=None):
     avg_severity = float(np.mean(severity[skin_pixels_mask]))
     return min(100.0, round(avg_severity * 100 * 1.4, 2))
 
-MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # จำกัดไฟล์อัปโหลดไว้ที่ 15MB กันคนยิงไฟล์ใหญ่มาถล่มเซิร์ฟเวอร์ (DoS เบื้องต้น)
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # จำกัดไฟล์อัปโหลดไว้ที่ 10MB กันคนยิงไฟล์ใหญ่มาถล่มเซิร์ฟเวอร์ (DoS เบื้องต้น)
 RESULT_KINDS = ["spots", "pores", "red", "uv", "wrinkles", "result", "dark_circles"]
 RESULT_MAX_AGE_SECONDS = 60 * 60  # เก็บรูปผลลัพธ์ของแต่ละคนไว้ไม่เกิน 1 ชม. แล้วลบทิ้งอัตโนมัติ (ลดความเสี่ยงรูปใบหน้าผู้ใช้ค้างอยู่บนเซิร์ฟเวอร์นานเกินจำเป็น)
 
@@ -323,7 +229,7 @@ async def analyze_acne(file: UploadFile = File(...)):
 
         contents = await file.read()
         if len(contents) > MAX_UPLOAD_BYTES:
-            return JSONResponse(status_code=413, content={"error": "ไฟล์รูปภาพมีขนาดใหญ่เกินไป (จำกัดไม่เกิน 15MB)"})
+            return JSONResponse(status_code=413, content={"error": "ไฟล์รูปภาพมีขนาดใหญ่เกินไป (จำกัดไม่เกิน 10MB)"})
 
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)

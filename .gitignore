@@ -25,6 +25,3 @@ desktop.ini
 
 # โมเดล/ไฟล์น้ำหนักขนาดใหญ่ (โหลดแยกตามคำแนะนำใน README แทนการ commit เข้า git)
 backend/main/res/cp/*.pth
-
-.vercel
-.env*

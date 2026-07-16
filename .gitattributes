@@ -1,7 +1,0 @@
-# ไฟล์ .so เป็นไบนารีล้วนๆ (native shared library stub สำหรับแก้ปัญหา libGL.so.1 บน Vercel) -- ห้าม git
-# แปลงปลายบรรทัด LF/CRLF ให้เด็ดขาด (core.autocrlf=true ของ Windows จะไปแก้ไบต์ในไฟล์ไบนารีจนพังได้
-# ถ้าไม่ประกาศ binary ไว้ตรงนี้ก่อน)
-*.so binary
-*.so.* binary
-*.whl binary
-backend/main/models/*.pt binary

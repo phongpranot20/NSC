@@ -5,7 +5,8 @@
       "src": "backend/main/main.py",
       "use": "@vercel/python",
       "config": {
-        "maxDuration": 300
+        "maxDuration": 300,
+        "includeFiles": "backend/main/{index.html,background.jpg,models/**,utils/**,wrinkle_engine/**}"
       }
     }
   ],
