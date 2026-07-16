@@ -1,0 +1,25 @@
+# คีย์ลับ/ค่าตั้งค่าที่ไม่ควรหลุดขึ้น git เด็ดขาด
+.env
+*.env
+!.env.example
+
+# ไฟล์ผลลัพธ์ที่เซิร์ฟเวอร์เขียนตอนรันจริง (มีรูปใบหน้าผู้ใช้จริงติดอยู่ ไม่ควรหลุดขึ้น git)
+backend/main/latest_*.jpg
+backend/main/*_spots.jpg
+backend/main/*_pores.jpg
+backend/main/*_red.jpg
+backend/main/*_uv.jpg
+backend/main/*_wrinkles.jpg
+backend/main/*_result.jpg
+
+# ไฟล์ระบบ/แคชของ Python
+__pycache__/
+*.pyc
+*.pyo
+
+# ไฟล์ของระบบปฏิบัติการ/OneDrive
+desktop.ini
+.DS_Store
+
+# โมเดล/ไฟล์น้ำหนักขนาดใหญ่ (โหลดแยกตามคำแนะนำใน README แทนการ commit เข้า git)
+backend/main/res/cp/*.pth

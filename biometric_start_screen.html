@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OmniSkin — Start Screen</title>
+<style>
+  html, body { margin:0; padding:0; background:#050c1a; }
+  * { box-sizing: border-box; }
+</style>
+</head>
+<body>
+
+<div id="bioRoot" style="position:relative; width:100%; min-height:100vh; background-image:url('background.jpg'); background-size:cover; background-position: center; background-repeat:no-repeat; color:#eaf6ff; font-family: 'Segoe UI', Arial, sans-serif; overflow:hidden;">
+
+  <h2 style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);">OmniSkin face-scan start screen with a low-poly wireframe head background and a start button.</h2>
+
+  <!-- patch over the stock image's original "FACE RECOGNITION" caption, replaced with the project name -->
+  <div style="position:absolute; top:0; left:0; width:38%; height:52%; background: radial-gradient(ellipse at 25% 30%, rgba(6,16,32,0.94) 0%, rgba(6,16,32,0.88) 45%, rgba(6,16,32,0) 78%); pointer-events:none; z-index:5;"></div>
+
+  <!-- project heading -->
+  <div style="position:absolute; top:17%; left:5%; max-width:320px; z-index:6;">
+    <div style="font-size:34px; font-weight:800; letter-spacing:0.5px; line-height:1.15; color:#eaf6ff; text-shadow:0 0 20px rgba(64,160,255,0.55);">OmniSkin</div>
+    <div style="margin-top:14px; font-size:11px; line-height:1.85; color:rgba(200,225,255,0.6); max-width:250px;">
+      ระบบวิเคราะห์ผิวหน้าด้วยปัญญาประดิษฐ์ ตรวจจับจุดสำคัญบนใบหน้าแบบเรียลไทม์
+      เพื่อประเมินสภาพผิวของคุณอย่างแม่นยำและเป็นส่วนตัว
+    </div>
+  </div>
+
+  <!-- CTA -->
+  <div style="position:absolute; left:0; right:0; bottom:7%; display:flex; justify-content:center; z-index:6;">
+    <button id="scanBtn" style="position:relative; padding:16px 58px; background:rgba(20,60,110,0.35); border:1.5px solid rgba(120,190,255,0.85); color:#eaf6ff; font-family:inherit; letter-spacing:4px; font-size:13px; font-weight:600; cursor:pointer; border-radius:3px; text-transform:uppercase; overflow:hidden; backdrop-filter: blur(2px);">
+      <span style="position:relative; z-index:2;">Start</span>
+      <span id="btnSweep" style="position:absolute; top:0; left:-40%; width:40%; height:100%; background:linear-gradient(90deg, transparent, rgba(140,200,255,0.6), transparent); z-index:1;"></span>
+    </button>
+  </div>
+
+</div>
+
+<style>
+  #scanBtn { transition: box-shadow .25s ease, background .25s ease, color .25s ease; animation: btnPulse 2.6s ease-in-out infinite; }
+  #scanBtn:hover { background: rgba(120,190,255,0.28); }
+  #scanBtn:hover #btnSweep { animation: btnSweepMove 0.9s ease-in-out infinite; }
+  @keyframes btnSweepMove { 0% { left: -40%; } 100% { left: 100%; } }
+  @keyframes btnPulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(120,190,255,0.30), inset 0 0 6px rgba(120,190,255,0.12); }
+    50% { box-shadow: 0 0 24px rgba(120,190,255,0.8), inset 0 0 12px rgba(120,190,255,0.32); }
+  }
+</style>
+
+<script>
+  document.getElementById('scanBtn').addEventListener('click', function(){
+    // Hook this up to your app's actual analyze/upload flow.
+    console.log('START clicked');
+  });
+</script>
+
+</body>
+</html>
