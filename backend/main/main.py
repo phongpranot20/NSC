@@ -42,6 +42,32 @@ if os.path.isdir(_NATIVE_LIBS_DIR):
         except OSError as _e:
             print(f"[main] preload stub lib ล้มเหลว ({_stub_name}): {_e} -- ข้ามไป ไม่ทำให้แอปพัง")
 
+# --- diagnostic ชั่วคราว: หา root cause ว่าทำไม "import cv2" หาโมดูลไม่เจอเลยบน Vercel (ไม่ใช่ error
+# แบบ .so หาไม่เจอเหมือนก่อนหน้า แต่เป็น ModuleNotFoundError ตรงๆ) พิมพ์ข้อมูล site-packages ออกมาดูก่อน
+# import จริง เพื่อเช็คว่า opencv-python-headless / opencv-contrib-python-headless ถูกติดตั้งจริงไหม บน
+# Vercel runtime -- ลบบล็อกนี้ทิ้งได้หลังจากแก้ปัญหาเสร็จแล้ว
+try:
+    import importlib.metadata as _ilm
+    print("[diag] sys.path =", sys.path)
+    _dists = sorted(
+        f"{d.metadata['Name']}=={d.version}"
+        for d in _ilm.distributions()
+        if d.metadata and d.metadata["Name"] and "cv" in d.metadata["Name"].lower()
+    )
+    print("[diag] cv*-related distributions installed:", _dists)
+    for _p in sys.path:
+        try:
+            _entries = os.listdir(_p)
+        except Exception:
+            continue
+        if "cv2" in _entries:
+            print(f"[diag] พบโฟลเดอร์ cv2/ อยู่ใน {_p}: {sorted(os.listdir(os.path.join(_p, 'cv2')))[:20]}")
+        _site_pkgs_like = [e for e in _entries if "site-packages" in e or e == "cv2"]
+        if _site_pkgs_like:
+            print(f"[diag] {_p} มี: {_site_pkgs_like[:20]}")
+except Exception as _diag_e:
+    print(f"[diag] diagnostic เองก็พังด้วย: {_diag_e!r}")
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
