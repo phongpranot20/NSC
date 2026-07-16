@@ -1,7 +1,12 @@
 fastapi
 uvicorn
 python-multipart
-opencv-python<5
+# ใช้เวอร์ชัน "headless" แทน opencv-python/opencv-contrib-python ปกติเสมอ -- เวอร์ชันปกติต้องพึ่งไลบรารี
+# กราฟิกของระบบ (libGL.so.1, GTK ฯลฯ) ที่ไม่มีอยู่บน Linux serverless แบบ Vercel ทำให้ "import cv2" พัง
+# ตั้งแต่ตอนโหลดไฟล์ (เห็น error "could not import main.py" เพราะทั้งไฟล์ import cv2 ไม่ผ่าน) เวอร์ชัน
+# headless ตัดส่วนแสดงผลหน้าต่าง (imshow ฯลฯ) ออกไป ซึ่งโค้ดเราไม่เคยใช้อยู่แล้ว ทำงานเหมือนเดิมทุกอย่าง
+# แถมขนาดเล็กกว่าด้วย
+opencv-python-headless<5
 numpy<2
 ultralytics
 
@@ -11,9 +16,10 @@ ultralytics
 # ออกไปแล้ว ทำให้ AttributeError: module 'mediapipe' has no attribute 'solutions' ถ้าลงแบบไม่ระบุเวอร์ชัน
 mediapipe==0.10.14
 # mediapipe ดึง opencv-contrib-python มาเป็น dependency ด้วยเสมอ (ไม่ได้ระบุเวอร์ชันเอง) ถ้าไม่ pin ตรงนี้
-# pip จะลงเวอร์ชันล่าสุด (5.x) มาทับ/ชนกับ opencv-python<5 ด้านบน ทำให้ cv2.CascadeClassifier หายไปอีกรอบ
-# (ห้ามลง opencv-python และ opencv-contrib-python คนละเมเจอร์เวอร์ชันพร้อมกันเด็ดขาด ใช้ cv2 namespace ร่วมกัน)
-opencv-contrib-python<5
+# pip จะลงเวอร์ชันล่าสุด (5.x) มาทับ/ชนกับ opencv-python-headless<5 ด้านบน ทำให้ cv2.CascadeClassifier
+# หายไปอีกรอบ (ห้ามลง opencv-python และ opencv-contrib-python คนละเมเจอร์เวอร์ชันพร้อมกันเด็ดขาด ใช้ cv2
+# namespace ร่วมกัน) ใช้ headless เช่นกันด้วยเหตุผลเดียวกับด้านบน
+opencv-contrib-python-headless<5
 
 # สำหรับคำแนะนำที่สร้างโดย AI (Gemini) ในแดชบอร์ดผลลัพธ์
 google-genai
