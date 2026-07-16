@@ -1,0 +1,36 @@
+fastapi
+uvicorn
+python-multipart
+opencv-python<5
+numpy<2
+ultralytics
+
+# สำหรับหาตำแหน่ง landmark ใบหน้าแม่นยำระดับพิกเซล (เส้นขอบใบหน้าจริง/ตำแหน่งแก้ม/ตา/ปาก)
+# ใช้แทนการประมาณตำแหน่งด้วย Haar cascade + วงรีเดาสัดส่วนแบบเดิม (แม่นยำกว่ามาก ไม่ล้นไปโดนหู/พื้นหลัง)
+# ต้อง pin เวอร์ชันเก่าไว้เท่านั้น: เวอร์ชันใหม่ล่าสุดตัด legacy "solutions" API (mp.solutions.face_mesh)
+# ออกไปแล้ว ทำให้ AttributeError: module 'mediapipe' has no attribute 'solutions' ถ้าลงแบบไม่ระบุเวอร์ชัน
+mediapipe==0.10.14
+# mediapipe ดึง opencv-contrib-python มาเป็น dependency ด้วยเสมอ (ไม่ได้ระบุเวอร์ชันเอง) ถ้าไม่ pin ตรงนี้
+# pip จะลงเวอร์ชันล่าสุด (5.x) มาทับ/ชนกับ opencv-python<5 ด้านบน ทำให้ cv2.CascadeClassifier หายไปอีกรอบ
+# (ห้ามลง opencv-python และ opencv-contrib-python คนละเมเจอร์เวอร์ชันพร้อมกันเด็ดขาด ใช้ cv2 namespace ร่วมกัน)
+opencv-contrib-python<5
+
+# สำหรับคำแนะนำที่สร้างโดย AI (Gemini) ในแดชบอร์ดผลลัพธ์
+google-genai
+python-dotenv
+
+# สำหรับโมเดล U-Net วิเคราะห์ริ้วรอยจริง (ถ้าไม่ติดตั้ง แอปจะ fallback ไปใช้ OpenCV เดิมอัตโนมัติ)
+# บังคับใช้ CPU-only wheel เสมอ (ไม่ใช่แค่คอมเมนต์แนะนำแบบเดิม) เพราะแพ็กเกจ torch เริ่มต้นจาก PyPI ทั่วไป
+# แถม CUDA runtime มาด้วยขนาดใหญ่มาก (~1-2GB+) ทั้งที่เซิร์ฟเวอร์ deploy จริง (เช่น Vercel serverless
+# function) ไม่มี GPU ให้ใช้อยู่แล้ว รันบน CPU ล้วนๆ เท่านั้น การบังคับ CPU-only wheel ตรงนี้ลดขนาด
+# deployment ลงหลัก GB ซึ่งจำเป็นมากเพื่อไม่ให้เกินขีดจำกัดขนาด serverless function
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch
+torchvision
+pillow
+
+# สำหรับดาวน์โหลดไฟล์ weight (.pth) อัตโนมัติมาเก็บที่ /tmp ตอน cold start กรณี deploy บนโฮสต์ที่ไม่มี
+# res/cp/*.pth ติดมาด้วย (เช่น Vercel -- ไฟล์ .pth ถูก .gitignore ไว้เพราะใหญ่เกินจะ commit ขึ้น git)
+# ดู wrinkle_engine/infer.py: _ensure_weights_available()
+requests
+gdown
