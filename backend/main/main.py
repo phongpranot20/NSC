@@ -42,7 +42,7 @@ app.add_middleware(
 )
 
 # 3. โหลดสมอง AI สำหรับสแกนจุดสิว
-model = YOLO("models/best.pt")
+model = YOLO(os.path.join(_BASE_DIR, "models", "best.pt"))
 
 # 3b. ตั้งค่า Gemini AI สำหรับสร้างคำแนะนำการดูแลผิวแบบข้อความ (ไม่บังคับ -- ถ้ายังไม่ใส่ key
 #     แอปจะยังใช้งานได้ปกติทุกอย่าง แค่ช่องคำแนะนำ AI จะแจ้งว่ายังไม่ได้ตั้งค่า)
@@ -64,7 +64,7 @@ NO_CACHE_HEADERS = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pra
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
     try:
-        with open("index.html", "r", encoding="utf-8") as f:
+        with open(os.path.join(_BASE_DIR, "index.html"), "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), status_code=200, headers=NO_CACHE_HEADERS)
     except FileNotFoundError:
         return HTMLResponse(content="<h1>ไม่พบไฟล์ index.html</h1>", status_code=404, headers=NO_CACHE_HEADERS)
@@ -72,7 +72,7 @@ async def read_index():
 # 4b. รูปพื้นหลังหน้า Start (landing screen)
 @app.get("/background.jpg")
 async def read_background_image():
-    return FileResponse("background.jpg", headers={"Cache-Control": "public, max-age=86400"})
+    return FileResponse(os.path.join(_BASE_DIR, "background.jpg"), headers={"Cache-Control": "public, max-age=86400"})
 
 # 5. ฟังก์ชันยื่นส่งรูปภาพแยก 4 ปัญหาผิวข้ามระบบไปหน้าเว็บหลัก
 #    ต้องแนบ session_id ของคำขอวิเคราะห์นั้นๆ มาด้วย (ได้จาก response ของ /analyze-acne)
