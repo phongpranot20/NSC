@@ -18,6 +18,12 @@ import tempfile
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BASE_DIR)
 
+# ไฟล์หน้าเว็บ (index.html, background.jpg) แยกออกไปอยู่ที่โฟลเดอร์ frontend/ ที่ root ของโปรเจกต์แล้ว
+# (ไม่ปนอยู่กับโค้ด backend ในโฟลเดอร์นี้อีกต่อไป) คำนวณ path ไปหาโฟลเดอร์นั้นจาก _BASE_DIR: ถอยขึ้นไป
+# 2 ระดับ (backend/main -> backend -> root) แล้วเข้าไปที่ frontend/
+_REPO_ROOT = os.path.dirname(os.path.dirname(_BASE_DIR))
+_FRONTEND_DIR = os.path.join(_REPO_ROOT, "frontend")
+
 # แก้ปัญหา "ImportError: libGL.so.1: cannot open shared object file" บน Vercel (Linux serverless runtime
 # แบบ minimal ไม่มีไลบรารีกราฟิกของระบบติดมาเลย) -- ต้นตอที่แท้จริงคือ mediapipe==0.10.14 บังคับดึง
 # opencv-contrib-python (เวอร์ชันปกติ ไม่ใช่ headless) มาเป็น dependency เสมอโดยไม่สนใจว่าเรา pin
@@ -142,7 +148,7 @@ NO_CACHE_HEADERS = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pra
 @app.get("/", response_class=HTMLResponse)
 async def read_index():
     try:
-        with open(os.path.join(_BASE_DIR, "index.html"), "r", encoding="utf-8") as f:
+        with open(os.path.join(_FRONTEND_DIR, "index.html"), "r", encoding="utf-8") as f:
             return HTMLResponse(content=f.read(), status_code=200, headers=NO_CACHE_HEADERS)
     except FileNotFoundError:
         return HTMLResponse(content="<h1>ไม่พบไฟล์ index.html</h1>", status_code=404, headers=NO_CACHE_HEADERS)
@@ -150,7 +156,7 @@ async def read_index():
 # 4b. รูปพื้นหลังหน้า Start (landing screen)
 @app.get("/background.jpg")
 async def read_background_image():
-    return FileResponse(os.path.join(_BASE_DIR, "background.jpg"), headers={"Cache-Control": "public, max-age=86400"})
+    return FileResponse(os.path.join(_FRONTEND_DIR, "background.jpg"), headers={"Cache-Control": "public, max-age=86400"})
 
 # 5. ฟังก์ชันยื่นส่งรูปภาพแยก 4 ปัญหาผิวข้ามระบบไปหน้าเว็บหลัก
 #    ต้องแนบ session_id ของคำขอวิเคราะห์นั้นๆ มาด้วย (ได้จาก response ของ /analyze-acne)

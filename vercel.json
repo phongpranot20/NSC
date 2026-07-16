@@ -6,7 +6,7 @@
       "use": "@vercel/python",
       "config": {
         "maxDuration": 300,
-        "includeFiles": "backend/main/{index.html,background.jpg,models/**,utils/**,wrinkle_engine/**,native_libs/**}"
+        "includeFiles": "{backend/main/{models/**,utils/**,wrinkle_engine/**,native_libs/**},frontend/{index.html,background.jpg}}"
       }
     }
   ],
