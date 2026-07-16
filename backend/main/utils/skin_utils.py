@@ -423,14 +423,39 @@ def analyze_spots_and_pores(img, session_id=None, landmarks=None):
     spots_visual = soft_overlay(img, spots_mask, (102, 178, 255), alpha=0.68, feather=7)
     cv2.imwrite(result_filename(session_id, "spots"), spots_visual, JPEG_PARAMS)
 
-    # 2. คำนวณรูขุมขนกว้าง (Pores) เฉพาะในขอบเขตผิวหนัง (ตัดเส้นผมที่ก่อน edge เยอะออก)
-    # threshold เดิม 38 ไวเกินไป (จับผิวเรียบเป็นรูขุมขนหมด) ขยับขึ้นเป็น 55 แล้วกลับกลายเป็นเข้มงวด
-    # เกินไปอีกทาง (ตรวจไม่เจอเลยแม้ในรูปที่มีรูขุมขนจริง) ปรับกลับมาที่จุดกลางๆ = 45 แทน โดยพึ่งการ
-    # คำนวณคะแนนแบบ density-based ต่อพื้นที่แก้ม (ด้านล่าง) เป็นตัวกันคะแนนพุ่งเกินจริงแทนการเข้มงวด
-    # ที่ตัว threshold การตรวจจับเอง
-    laplacian = cv2.Laplacian(cl_img, cv2.CV_64F)
-    laplacian = np.uint8(np.absolute(laplacian))
-    _, pores_mask_raw = cv2.threshold(laplacian, 45, 255, cv2.THRESH_BINARY)
+    # 2. คำนวณรูขุมขนกว้าง (Pores) เฉพาะในขอบเขตผิวหนัง -- เปลี่ยนจาก threshold ตายตัวทั้งหมด (ที่ผู้ใช้
+    # รายงานว่าพังกับรูปที่แสง/ระยะถ่ายต่างกัน: ค่าตัวเลขคงที่ค่าเดียวใช้ไม่ได้กับทุกรูป บางรูปไวเกินจนจับ
+    # เนื้อผิวปกติเป็นรูขุมขน บางรูปเข้มงวดเกินจนไม่เจอเลยแม้จะมีรูขุมขนจริงให้เห็นชัดๆ) มาเป็น "Adaptive +
+    # Relative" ล้วนๆ ตามที่ผู้ใช้ระบุ 2 ชั้น:
+    #   ชั้น 1 (Adaptive): เทียบความสว่างแต่ละพิกเซลกับค่าเฉลี่ยเฉพาะที่ (local mean ของผิวรอบข้างมันเอง ผ่าน
+    #     box filter) แทนค่าคงที่ทั่วภาพ -- รูขุมขนคือ "จุดมืดเฉพาะจุดเมื่อเทียบกับผิวรอบตัวมันเอง" ปรับตาม
+    #     แสง/ระยะถ่ายภาพของรูปนั้นๆ เองโดยอัตโนมัติ ไม่ต้องพึ่งเลข threshold ตายตัว
+    #   ชั้น 2 (Relative/Percentile): หา cutoff จาก percentile ของค่าเบี่ยงเบนนี้ "เฉพาะในโซนแก้ม+ผิวของรูป
+    #     นั้นๆ" เอาแค่ top ~12% ที่มืดกว่าผิวรอบข้างมากที่สุดจริงๆ เท่านั้น (percentile ที่ 88) การันตีว่าจะเจอ
+    #     "บางจุด" เสมอถ้ามีรูขุมขนอยู่จริงในรูปนั้น (ไม่มีทางได้ 0 จุดเหมือน threshold ตายตัวที่เข้มไป) แต่ก็
+    #     ไม่มีทางสเปรย์เต็มแก้มเหมือน threshold ที่หลวมไป เพราะจำกัดไว้แค่สัดส่วน top 12% เสมอไม่ว่าค่าเบี่ยงเบน
+    #     ดิบของรูปนั้นจะเยอะ/น้อยแค่ไหนก็ตาม
+    # ต้องหา cheek_mask ก่อนคำนวณ percentile (ให้ percentile สะท้อนเฉพาะเนื้อผิวแก้มจริงๆ ไม่ปนพื้นหลัง/ผม)
+    cheek_mask = get_cheek_mask(img, landmarks=landmarks)
+    if cheek_mask is not None:
+        skin_cheek_bool = (cheek_mask == 255) & (skin_mask == 255)
+    else:
+        skin_cheek_bool = np.zeros(cl_img.shape, dtype=bool)
+
+    local_mean = cv2.boxFilter(cl_img.astype(np.float32), -1, (15, 15))
+    darkness_deviation = local_mean - cl_img.astype(np.float32)
+    darkness_deviation[darkness_deviation < 0] = 0  # สนใจแค่จุดมืดกว่ารอบข้าง (รูขุมขน) ไม่ใช่จุดสว่างกว่า
+
+    if np.any(skin_cheek_bool):
+        pct_cutoff = float(np.percentile(darkness_deviation[skin_cheek_bool], 88))  # top ~12%
+        pct_cutoff = max(pct_cutoff, 6.0)  # กันผิวเรียบเนียนมากจน percentile ต่ำจนเกือบ 0 (noise ผ่านง่ายไป)
+    else:
+        pct_cutoff = 255.0  # หาโซนแก้ม/ผิวไม่เจอเลย -- ตั้งสูงเกินจริงกันไม่ให้ผ่านอะไรเลย
+
+    pores_mask_raw = np.zeros(cl_img.shape, dtype=np.uint8)
+    pores_mask_raw[darkness_deviation >= pct_cutoff] = 255
+    noise_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2, 2))
+    pores_mask_raw = cv2.morphologyEx(pores_mask_raw, cv2.MORPH_OPEN, noise_kernel)
     pores_mask = cv2.bitwise_and(pores_mask_raw, pores_mask_raw, mask=skin_mask)
 
     # จำกัดขอบเขตรูขุมขนกว้างให้อยู่เฉพาะโซนแก้มเท่านั้น (ไม่ตรวจ/ไม่แสดงบนหน้าผาก ขมับ รอบดวงตา จมูก
@@ -438,7 +463,6 @@ def analyze_spots_and_pores(img, session_id=None, landmarks=None):
     # ทั้ง MediaPipe และ Haar cascade หาใบหน้าไม่เจอ) จะ "ไม่วาดรูขุมขนเลยแม้แต่จุดเดียว" แทนที่จะ fallback
     # ไปใช้ skin_mask เต็มหน้าแบบเดิม (ซึ่งเป็นสาเหตุที่จุด/เส้นขอบหลุดไปโผล่ตรงขมับ/รอบตา/จมูกตามที่พบ)
     # ยอมให้บางเคสไม่มีผลลัพธ์รูขุมขนแสดง ดีกว่าแสดงตำแหน่งที่ไม่ถูกต้อง
-    cheek_mask = get_cheek_mask(img, landmarks=landmarks)
     if cheek_mask is not None:
         pores_mask = cv2.bitwise_and(pores_mask, pores_mask, mask=cheek_mask)
     else:
@@ -446,12 +470,13 @@ def analyze_spots_and_pores(img, session_id=None, landmarks=None):
 
     # หาตำแหน่งรูขุมขนแต่ละรูแยกเป็นก้อนๆ (แทนการนับรวมพิกเซลทั้งปื้นแบบเดิม) เพื่อวาดเป็น "จุด"
     # ตามตำแหน่งจริงแต่ละรู แบบภาพตัวอย่างที่ผู้ใช้ส่งมา (จุดม่วงกระจายถี่/ห่างตามความหนาแน่นของรูขุมขนจริง)
-    # กรองขนาดก้อนให้อยู่ในช่วงสมเหตุสมผลของรูขุมขน (เล็กเกินไป = สัญญาณรบกวน, ใหญ่เกินไป = ริ้วรอย/ขอบอื่น)
+    # กรองขนาดก้อนเล็กน้อยอีกชั้น (แค่กันสัญญาณรบกวน 1-2 พิกเซล ไม่ต้องเข้มงวดมากเหมือนก่อนหน้านี้แล้ว เพราะ
+    # ตัวคัดกรองหลักตอนนี้คือ percentile ด้านบนที่ adaptive ต่อรูปอยู่แล้ว)
     num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(pores_mask, connectivity=8)
     pore_points = []
     for i in range(1, num_labels):
         area = stats[i, cv2.CC_STAT_AREA]
-        if area < 3 or area > 45:  # ขั้นต่ำ 3 พิกเซล กันจุดสัญญาณรบกวน 1-2 พิกเซลนับเป็นรูขุมขน
+        if area < 3 or area > 45:
             continue
         cx, cy = centroids[i]
         pore_points.append((int(round(cx)), int(round(cy))))

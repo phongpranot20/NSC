@@ -18,6 +18,30 @@ import tempfile
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BASE_DIR)
 
+# แก้ปัญหา "ImportError: libGL.so.1: cannot open shared object file" บน Vercel (Linux serverless runtime
+# แบบ minimal ไม่มีไลบรารีกราฟิกของระบบติดมาเลย) -- ต้นตอที่แท้จริงคือ mediapipe==0.10.14 บังคับดึง
+# opencv-contrib-python (เวอร์ชันปกติ ไม่ใช่ headless) มาเป็น dependency เสมอโดยไม่สนใจว่าเรา pin
+# opencv-contrib-python-headless ไว้เองแล้วก็ตาม (bug ที่มีคนรายงานไว้แล้วที่
+# github.com/google-ai-edge/mediapipe/issues/6121 ยังไม่ถูกแก้จากฝั่ง Google) ทำให้ตัว non-headless
+# หลุดติดตั้งมาด้วยเสมอ และไปโหลดไม่สำเร็จเพราะหา libGL.so.1 (และไลบรารี GUI/X11 อื่นๆ) ไม่เจอในระบบ
+#
+# แก้ด้วยการสร้างไฟล์ .so "หลอก" (stub) ที่ไม่มีฟังก์ชันจริงข้างในเลย เก็บไว้ที่ native_libs/ แล้ว
+# "preload" (โหลดล่วงหน้า) ด้วย ctypes.CDLL(path, mode=RTLD_GLOBAL) ก่อน import cv2 เสมอ
+# (ทดสอบแล้วว่าการตั้ง os.environ["LD_LIBRARY_PATH"] เฉยๆ ระหว่างรัน "ใช้ไม่ได้จริง" เพราะ glibc
+# แคชค่านี้ไว้ตั้งแต่ตอน process เริ่มทำงาน ไม่ได้อ่านซ้ำตอน dlopen แต่ละครั้ง -- ต้อง preload แบบ
+# ระบุ path เต็มด้วย ctypes ตรงๆ เท่านั้นถึงจะทำให้ dynamic linker "จำ" ว่ามีไลบรารีชื่อนี้โหลดอยู่แล้ว
+# แล้วนำไปใช้ตอน cv2 native module พยายาม dlopen หาไลบรารีเดียวกันนี้อีกที) โค้ดเราไม่เคยเรียกฟังก์ชัน
+# GUI/OpenGL จริงอยู่แล้ว (ไม่มี imshow ฯลฯ) จึงไม่กระทบการทำงานใดๆ เป็นการหลอก dynamic linker ตอน
+# import เท่านั้น ไม่ใช่การเปิดใช้ GPU/GUI จริง
+_NATIVE_LIBS_DIR = os.path.join(_BASE_DIR, "native_libs")
+if os.path.isdir(_NATIVE_LIBS_DIR):
+    import ctypes
+    for _stub_name in os.listdir(_NATIVE_LIBS_DIR):
+        try:
+            ctypes.CDLL(os.path.join(_NATIVE_LIBS_DIR, _stub_name), mode=ctypes.RTLD_GLOBAL)
+        except OSError as _e:
+            print(f"[main] preload stub lib ล้มเหลว ({_stub_name}): {_e} -- ข้ามไป ไม่ทำให้แอปพัง")
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
@@ -195,7 +219,7 @@ def analyze_red_areas(img, session_id=None, landmarks=None):
     avg_severity = float(np.mean(severity[skin_pixels_mask]))
     return min(100.0, round(avg_severity * 100 * 1.4, 2))
 
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # จำกัดไฟล์อัปโหลดไว้ที่ 10MB กันคนยิงไฟล์ใหญ่มาถล่มเซิร์ฟเวอร์ (DoS เบื้องต้น)
+MAX_UPLOAD_BYTES = 15 * 1024 * 1024  # จำกัดไฟล์อัปโหลดไว้ที่ 15MB กันคนยิงไฟล์ใหญ่มาถล่มเซิร์ฟเวอร์ (DoS เบื้องต้น)
 RESULT_KINDS = ["spots", "pores", "red", "uv", "wrinkles", "result", "dark_circles"]
 RESULT_MAX_AGE_SECONDS = 60 * 60  # เก็บรูปผลลัพธ์ของแต่ละคนไว้ไม่เกิน 1 ชม. แล้วลบทิ้งอัตโนมัติ (ลดความเสี่ยงรูปใบหน้าผู้ใช้ค้างอยู่บนเซิร์ฟเวอร์นานเกินจำเป็น)
 
@@ -243,7 +267,7 @@ async def analyze_acne(file: UploadFile = File(...)):
 
         contents = await file.read()
         if len(contents) > MAX_UPLOAD_BYTES:
-            return JSONResponse(status_code=413, content={"error": "ไฟล์รูปภาพมีขนาดใหญ่เกินไป (จำกัดไม่เกิน 10MB)"})
+            return JSONResponse(status_code=413, content={"error": "ไฟล์รูปภาพมีขนาดใหญ่เกินไป (จำกัดไม่เกิน 15MB)"})
 
         nparr = np.frombuffer(contents, np.uint8)
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
