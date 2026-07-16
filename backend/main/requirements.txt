@@ -13,7 +13,13 @@ ultralytics
 # (opencv-python>=4.6.0 ใน pyproject.toml) เจอปัญหาชื่อไม่ตรงกันแบบเดียวกับ opencv-contrib-python
 # ด้านล่าง -- ต้องกันด้วย decoy package เหมือนกัน ไม่งั้น pip/uv จะไปดึงตัวจริง (ต้องพึ่ง libGL.so.1 /
 # Qt5Gui.so) มาลงอีกตัวจน import cv2 พังแบบเดียวกัน
-./vendor/opencv_python-99.0.0-py3-none-any.whl
+#
+# หมายเหตุ path: ใช้ path เต็มแบบ absolute (file:///vercel/path0/...) แทน relative path (./vendor/...)
+# เพราะ Vercel build ("uv lock") เจอบั๊ก resolve relative path ผิด -- เอา src dir "backend/main" มาต่อซ้ำ
+# สองรอบ (error: "Distribution not found at:
+# file:///vercel/path0/backend/main/backend/main/vendor/...") /vercel/path0 คือ root ของ repo
+# ที่ Vercel build container ใช้เสมอ (ค่าคงที่มาตรฐานของ Vercel build)
+file:///vercel/path0/backend/main/vendor/opencv_python-99.0.0-py3-none-any.whl
 
 # สำหรับหาตำแหน่ง landmark ใบหน้าแม่นยำระดับพิกเซล (เส้นขอบใบหน้าจริง/ตำแหน่งแก้ม/ตา/ปาก)
 # ใช้แทนการประมาณตำแหน่งด้วย Haar cascade + วงรีเดาสัดส่วนแบบเดิม (แม่นยำกว่ามาก ไม่ล้นไปโดนหู/พื้นหลัง)
@@ -40,8 +46,9 @@ opencv-contrib-python-headless<5
 # pip/uv ว่า requirement "opencv-contrib-python" (ที่ mediapipe ต้องการ) ถูก satisfy แล้ว จะได้ไม่ไป
 # ดึงตัวจริงจาก PyPI มาลงอีก -- cv2 ทำงานได้ปกติทุกอย่างเพราะโมดูล cv2 จริงๆ มาจาก
 # opencv-contrib-python-headless ด้านบนอยู่แล้ว (ทดสอบแล้วว่า pip และ uv resolve แบบนี้ได้จริง ไม่ต้อง
-# ต่อเน็ตไปดึงตัวจริงเลย)
-./vendor/opencv_contrib_python-99.0.0-py3-none-any.whl
+# ต่อเน็ตไปดึงตัวจริงเลย) -- ใช้ absolute path /vercel/path0/... เหตุผลเดียวกับ opencv-python ด้านบน
+# (relative path ./vendor/... โดน uv lock ต่อ "backend/main" ซ้ำสองรอบ)
+file:///vercel/path0/backend/main/vendor/opencv_contrib_python-99.0.0-py3-none-any.whl
 
 # สำหรับคำแนะนำที่สร้างโดย AI (Gemini) ในแดชบอร์ดผลลัพธ์
 google-genai
