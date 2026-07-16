@@ -1,9 +1,19 @@
 import os
+import sys
 import time
 import uuid
 import glob
 import base64
 import tempfile
+
+# เพิ่มโฟลเดอร์ของไฟล์นี้เอง (backend/main/) เข้า sys.path ก่อน import อะไรทั้งหมด -- ตอนรัน local ด้วย
+# `uvicorn main:app` จาก backend/main จะมีโฟลเดอร์นี้อยู่ใน sys.path ให้อัตโนมัติอยู่แล้ว แต่ Vercel
+# เรียกไฟล์นี้ผ่าน importlib จาก path เต็ม (/var/task/backend/main/main.py) โดยไม่เพิ่มโฟลเดอร์นี้เข้า
+# sys.path ให้เอง ทำให้ "from utils.skin_utils import ..." ด้านล่างพังด้วย ModuleNotFoundError: No module
+# named 'utils'
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, _BASE_DIR)
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
