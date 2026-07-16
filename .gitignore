@@ -4,6 +4,7 @@
 !.env.example
 
 # ไฟล์ผลลัพธ์ที่เซิร์ฟเวอร์เขียนตอนรันจริง (มีรูปใบหน้าผู้ใช้จริงติดอยู่ ไม่ควรหลุดขึ้น git)
+# (ตอนนี้ผลลัพธ์เขียนลง tempfile.gettempdir() แทนโฟลเดอร์นี้แล้ว แต่เก็บกฎไว้กันไฟล์เก่าที่ค้างอยู่)
 backend/main/latest_*.jpg
 backend/main/*_spots.jpg
 backend/main/*_pores.jpg
@@ -11,6 +12,7 @@ backend/main/*_red.jpg
 backend/main/*_uv.jpg
 backend/main/*_wrinkles.jpg
 backend/main/*_result.jpg
+backend/main/*_dark_circles.jpg
 
 # ไฟล์ระบบ/แคชของ Python
 __pycache__/
