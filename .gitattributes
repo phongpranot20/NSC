@@ -3,4 +3,5 @@
 # ถ้าไม่ประกาศ binary ไว้ตรงนี้ก่อน)
 *.so binary
 *.so.* binary
+*.whl binary
 backend/main/models/*.pt binary
