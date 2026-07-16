@@ -58,6 +58,29 @@ def _download_file(url, dest_path):
     os.replace(tmp_path, dest_path)
 
 
+def _looks_like_html_or_text(path, label):
+    """เช็คคร่าวๆ ว่าไฟล์ที่ดาวน์โหลดมาเป็นไฟล์ weight จริง (binary, ขึ้นต้นด้วย pickle/zip magic bytes)
+    หรือจริงๆ แล้วเป็นหน้า HTML/ข้อความ error (เช่น Dropbox/Google Drive ปฏิเสธไม่ให้โหลด, ลิงก์หมดอายุ,
+    ต้องยืนยันตัวตนก่อน ฯลฯ) -- กรณีนี้ torch.load() จะพังด้วย "invalid load key" ซึ่งข้อความไม่บอกสาเหตุจริง
+    เลย ต้องดักตรงนี้เพื่อ log ให้เห็นสาเหตุจริงชัดๆ และลบไฟล์เสียทิ้งจะได้ลองดาวน์โหลดใหม่ตอน cold start ถัดไป"""
+    try:
+        with open(path, "rb") as f:
+            head = f.read(512)
+    except OSError:
+        return False
+    stripped = head.lstrip()
+    is_html_like = stripped.startswith((b"<", b"PK\x03\x04HTML")) or b"<!DOCTYPE" in head or b"<html" in head.lower()
+    # ไฟล์ zip/pickle ของ torch จริงจะขึ้นต้นด้วย b"PK\x03\x04" (zip-based checkpoint ใหม่) หรือ pickle
+    # opcode ตรงๆ (0x80 สำหรับ protocol 2+) ไม่ใช่ "<" แน่ๆ
+    if stripped.startswith(b"<"):
+        snippet = head[:200].decode("utf-8", errors="replace")
+        print(f"[wrinkle_engine] ไฟล์ {label} ที่ดาวน์โหลดมา ({path}) จริงๆ แล้วเป็น HTML/ข้อความ ไม่ใช่ "
+              f"weight file จริง -- แหล่งดาวน์โหลด (Dropbox/Google Drive) น่าจะปฏิเสธ/ลิงก์หมดอายุ/ต้องยืนยันตัวตน "
+              f"เนื้อหา 200 ตัวอักษรแรกที่ได้มา: {snippet!r}")
+        return True
+    return is_html_like
+
+
 def _ensure_weights_available():
     """คืน (wrinkle_path, face_path) ที่ใช้งานได้จริง -- ลองใช้ไฟล์ที่ bundle มากับโค้ดก่อน ถ้าไม่มี
     (เช่น deploy บน Vercel ที่ res/cp/*.pth ถูก .gitignore ไว้) จะลองดาวน์โหลดมาเก็บไว้ที่ /tmp แทน
@@ -67,16 +90,33 @@ def _ensure_weights_available():
 
     cached_wrinkle = os.path.join(_CACHE_DIR, "wrinkle_model.pth")
     cached_face = os.path.join(_CACHE_DIR, "face_segmentation.pth")
+
+    # ถ้ามีไฟล์แคชค้างจาก cold start ก่อนหน้าที่ดันเป็น HTML/ข้อความเสีย (บั๊กที่เพิ่งพบ) ให้ลบทิ้งก่อน
+    # ไม่งั้น container นี้จะใช้ไฟล์เสียตัวเดิมซ้ำตลอดไปโดยไม่มีทางแก้ไขเองได้เลย (os.path.exists เจอไฟล์
+    # เสียก็เข้าใจว่า "มีแล้ว" ไม่ลองดาวน์โหลดใหม่)
+    for _p, _label in ((cached_wrinkle, "wrinkle_model.pth"), (cached_face, "face_segmentation.pth")):
+        if os.path.exists(_p) and _looks_like_html_or_text(_p, _label):
+            try:
+                os.remove(_p)
+            except OSError:
+                pass
+
     try:
         if not os.path.exists(cached_wrinkle):
             print("[wrinkle_engine] ไม่พบ wrinkle_model.pth ที่ bundle มา -> กำลังดาวน์โหลดมาเก็บที่ "
                   f"{_CACHE_DIR} (ครั้งแรกของ container นี้เท่านั้น, ไฟล์ ~830MB อาจใช้เวลาสักครู่)...")
             _download_file(_WRINKLE_WEIGHTS_URL, cached_wrinkle)
+            if _looks_like_html_or_text(cached_wrinkle, "wrinkle_model.pth"):
+                os.remove(cached_wrinkle)
+                raise RuntimeError("wrinkle_model.pth ที่ดาวน์โหลดมาเป็น HTML ไม่ใช่ weight จริง (ดูรายละเอียดด้านบน)")
         if not os.path.exists(cached_face):
             print("[wrinkle_engine] ไม่พบ face_segmentation.pth ที่ bundle มา -> กำลังดาวน์โหลดจาก Google "
                   "Drive มาเก็บที่ /tmp...")
             import gdown
             gdown.download(id=_FACE_WEIGHTS_GDRIVE_ID, output=cached_face, quiet=False)
+            if _looks_like_html_or_text(cached_face, "face_segmentation.pth"):
+                os.remove(cached_face)
+                raise RuntimeError("face_segmentation.pth ที่ดาวน์โหลดมาเป็น HTML ไม่ใช่ weight จริง (ดูรายละเอียดด้านบน)")
         if os.path.exists(cached_wrinkle) and os.path.exists(cached_face):
             return cached_wrinkle, cached_face
     except Exception as e:
@@ -102,6 +142,8 @@ try:
                 "-> deep wrinkle model disabled, using classic fallback"
             )
             return
+        # แยก try/except เป็นสองก้อนตามไฟล์ (face vs wrinkle) แทนที่จะรวมกันก้อนเดียวแบบเดิม เพราะข้อความ
+        # error รวม ("failed to load deep model (...)") ไม่บอกว่าไฟล์ไหนใน 2 ไฟล์ที่พังจริงๆ ทำให้ debug ยาก
         try:
             face_net = BiSeNet(n_classes=19, download_pretrained_backbone=False).to(_DEVICE)
             # weights_only=False ตรงๆ: PyTorch 2.6 เปลี่ยนดีฟอลต์เป็น True ซึ่งบล็อกการ unpickle โครงสร้าง
@@ -111,7 +153,12 @@ try:
             # จากผู้ใช้ทั่วไปที่ไม่รู้จัก) จึงตั้ง weights_only=False ได้อย่างปลอดภัย
             face_net.load_state_dict(torch.load(face_path, map_location=_DEVICE, weights_only=False))
             face_net.eval()
+        except Exception as e:
+            print(f"[wrinkle_engine] โหลด face_segmentation.pth ({face_path}) ไม่สำเร็จ: {type(e).__name__}: {e} "
+                  "-> using classic fallback")
+            return
 
+        try:
             wrinkle_net = UNet(
                 n_channels=3,
                 n_classes=1,
@@ -127,13 +174,15 @@ try:
             )
             wrinkle_net.load_state_dict(state_dict)
             wrinkle_net.eval()
-
-            _face_model = face_net
-            _wrinkle_model = wrinkle_net
-            MODEL_READY = True
-            print(f"[wrinkle_engine] deep wrinkle model loaded successfully on {_DEVICE}")
         except Exception as e:
-            print(f"[wrinkle_engine] failed to load deep model ({e}) -> using classic fallback")
+            print(f"[wrinkle_engine] โหลด wrinkle_model.pth ({wrinkle_path}) ไม่สำเร็จ: {type(e).__name__}: {e} "
+                  "-> using classic fallback")
+            return
+
+        _face_model = face_net
+        _wrinkle_model = wrinkle_net
+        MODEL_READY = True
+        print(f"[wrinkle_engine] deep wrinkle model loaded successfully on {_DEVICE}")
 
     _load_models()
 
