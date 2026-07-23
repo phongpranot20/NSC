@@ -1,12 +1,16 @@
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "backend/main/main.py": {
-      "maxDuration": 300,
-      "includeFiles": "backend/main/{index.html,background.jpg,models/**,utils/**,wrinkle_engine/**,res/cp/**}"
+  "version": 2,
+  "builds": [
+    {
+      "src": "backend/main/main.py",
+      "use": "@vercel/python",
+      "config": {
+        "maxDuration": 300,
+        "includeFiles": "backend/main/{index.html,background.jpg,models/**,utils/**,wrinkle_engine/**,res/cp/**}"
+      }
     }
-  },
-  "rewrites": [
-    { "source": "/(.*)", "destination": "/backend/main/main" }
+  ],
+  "routes": [
+    { "src": "/(.*)", "dest": "backend/main/main.py" }
   ]
 }
