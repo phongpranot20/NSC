@@ -23,5 +23,10 @@ __pycache__/
 desktop.ini
 .DS_Store
 
-# โมเดล/ไฟล์น้ำหนักขนาดใหญ่ (โหลดแยกตามคำแนะนำใน README แทนการ commit เข้า git)
-backend/main/res/cp/*.pth
+# โมเดล/ไฟล์น้ำหนักขนาดใหญ่ (backend/main/res/cp/*.pth) เดิมถูก ignore ไว้เพราะใหญ่เกิน git ปกติ
+# ตอนนี้เปลี่ยนมา track ผ่าน Git LFS แทน (ดู .gitattributes) เพื่อ bundle ไปกับ Vercel deploy ตรงๆ
+# ผ่าน VERCEL_SUPPORT_LARGE_FUNCTIONS แทนการดาวน์โหลดตอน runtime (แก้ปัญหา /tmp เต็มบน Vercel)
+# จึงไม่ ignore ไฟล์ .pth อีกต่อไป
+
+.vercel
+.env*

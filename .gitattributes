@@ -1,0 +1,4 @@
+# ไฟล์น้ำหนักโมเดล (.pth) ใหญ่เกินจะ commit แบบ git ปกติ (wrinkle_model.pth ~828MB, face_segmentation.pth ~51MB)
+# ใช้ Git LFS เก็บแทน แล้วให้ Vercel ดึง LFS object มา bundle ไปกับ deploy ตรงๆ ผ่าน
+# VERCEL_SUPPORT_LARGE_FUNCTIONS (ต้องเปิด Git LFS support ใน Vercel Project Settings ด้วย)
+backend/main/res/cp/*.pth filter=lfs diff=lfs merge=lfs -text
