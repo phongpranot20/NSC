@@ -462,24 +462,8 @@
                 <h2>แดชบอร์ดแสดงผลลัพธ์</h2>
 
                 <div id="result-dashboard">
-                    <!-- คะแนนสุขภาพผิวรวมแบบ gauge -->
+                    <!-- คะแนนสุขภาพผิวรวม -->
                     <div class="gauge-wrap">
-                        <div class="gauge">
-                            <svg viewBox="0 0 116 116">
-                                <defs>
-                                    <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                        <stop offset="0%" stop-color="#14b8a6"/>
-                                        <stop offset="100%" stop-color="#0891b2"/>
-                                    </linearGradient>
-                                </defs>
-                                <circle class="bg" cx="58" cy="58" r="50"></circle>
-                                <circle class="fg" id="gauge-fg" cx="58" cy="58" r="50" stroke-dasharray="314.16" stroke-dashoffset="314.16"></circle>
-                            </svg>
-                            <div class="gauge-label">
-                                <span id="txt-score">0/100</span>
-                                <span class="sub">คะแนนผิว</span>
-                            </div>
-                        </div>
                         <div class="gauge-desc">
                             <h3>ผลประเมินสุขภาพผิวโดยรวม</h3>
                             <p>คำนวณจากจุดสิว จุดด่างดำ รูขุมขน รอยแดง ริ้วรอย ฝ้าลึก และรอยคล้ำใต้ตาที่ตรวจพบ</p>
@@ -833,10 +817,11 @@
 
         // 2f. อัปเดตวงแหวนคะแนนสุขภาพผิว (SVG gauge)
         function updateGauge(score) {
+            const fg = document.getElementById('gauge-fg');
+            if (!fg) return; // ลบวงแหวนคะแนนรวมออกจากหน้าเว็บแล้ว ไม่มี element นี้อีกต่อไป
             const circumference = 314.16; // 2 * PI * r(50)
             const clamped = Math.max(0, Math.min(100, score));
             const offset = circumference - (clamped / 100) * circumference;
-            const fg = document.getElementById('gauge-fg');
             fg.style.strokeDashoffset = offset;
             if (clamped >= 75) fg.style.stroke = 'url(#gaugeGradient)';
             else if (clamped >= 50) fg.style.stroke = '#d97706';
@@ -882,7 +867,8 @@
                     ));
 
                     document.getElementById('txt-count').innerText = `${count} จุด`;
-                    document.getElementById('txt-score').innerText = `${score}/100`;
+                    const _txtScoreEl = document.getElementById('txt-score');
+                    if (_txtScoreEl) _txtScoreEl.innerText = `${score}/100`;
                     updateGauge(score);
 
                     // โหลดรูปผลวิเคราะห์ของทุกการ์ดพร้อมกัน + อัปเดต badge เกรด/วงแหวนคะแนน/รายละเอียด
