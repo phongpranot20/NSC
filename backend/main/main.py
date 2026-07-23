@@ -14,6 +14,21 @@ import tempfile
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BASE_DIR)
 
+# [diag ชั่วคราว] เช็คว่า opencv ตัวไหนถูกติดตั้งจริงบนเซิร์ฟเวอร์ก่อน import cv2 -- ไว้สืบสาเหตุที่
+# ImportError: libGL.so.1 (บั๊กที่เคยแก้ด้วย opencv-headless) กลับมาอีกทั้งที่ requirements.txt ยัง pin
+# เป็น headless อยู่ สงสัยว่า mediapipe แอบดึง opencv-contrib-python (ตัวไม่ headless) มาทับ ต้อง log
+# รายชื่อแพ็กเกจ opencv ที่ลงจริงไว้ก่อน import cv2 พัง เผื่อ import ล้มจะได้เห็นสาเหตุจาก log
+try:
+    import importlib.metadata as _im
+    _opencv_pkgs = sorted(
+        f"{d.metadata['Name']}=={d.version}"
+        for d in _im.distributions()
+        if d.metadata.get("Name") and "opencv" in d.metadata["Name"].lower()
+    )
+    print(f"[diag] แพ็กเกจ opencv ที่ติดตั้งจริงบนเซิร์ฟเวอร์นี้: {_opencv_pkgs}")
+except Exception as _diag_e:
+    print(f"[diag] เช็ครายชื่อแพ็กเกจ opencv ไม่สำเร็จ: {type(_diag_e).__name__}: {_diag_e}")
+
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile
