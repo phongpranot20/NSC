@@ -14,10 +14,14 @@ import tempfile
 _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BASE_DIR)
 
-# [diag ชั่วคราว] เช็คว่า opencv ตัวไหนถูกติดตั้งจริงบนเซิร์ฟเวอร์ก่อน import cv2 -- ไว้สืบสาเหตุที่
-# ImportError: libGL.so.1 (บั๊กที่เคยแก้ด้วย opencv-headless) กลับมาอีกทั้งที่ requirements.txt ยัง pin
-# เป็น headless อยู่ สงสัยว่า mediapipe แอบดึง opencv-contrib-python (ตัวไม่ headless) มาทับ ต้อง log
-# รายชื่อแพ็กเกจ opencv ที่ลงจริงไว้ก่อน import cv2 พัง เผื่อ import ล้มจะได้เห็นสาเหตุจาก log
+# [diag] เช็คว่า opencv ตัวไหนถูกติดตั้งจริงบนเซิร์ฟเวอร์ก่อน import cv2 -- ยืนยันแล้วว่าปัญหาคือ
+# mediapipe==0.10.14 ประกาศ dependency เป็น "opencv-contrib-python" (ตัวไม่ headless) ตรงๆ ในไฟล์
+# requirements.txt ของมันเอง (ดู https://github.com/google-ai-edge/mediapipe/issues/6121 -- บั๊กที่ทีม
+# mediapipe ยังไม่แก้) ทำให้ตอน build บน Vercel ทั้ง 4 ตัวแปร (opencv-python, opencv-contrib-python,
+# opencv-python-headless, opencv-contrib-python-headless) ถูกติดตั้งพร้อมกัน แล้วเขียนทับไฟล์ cv2/
+# ไดเรกทอรีเดียวกันเอง ตัวไหนชนะขึ้นอยู่กับลำดับติดตั้งของ uv ซึ่งไม่แน่นอน (สลับกันได้ทุกรอบ build จริง
+# เห็นแล้วจาก log: บางรอบ build headless ชนะ บางรอบตัวเต็ม (ต้องพึ่ง libGL.so.1) ชนะ) requirements.txt
+# pin เป็น headless แค่ไหนก็แก้ปัญหานี้ไม่ได้ 100% เพราะ pip/uv ไม่มองว่าสองชื่อแพ็กเกจนี้ขัดแย้งกัน
 try:
     import importlib.metadata as _im
     _opencv_pkgs = sorted(
@@ -28,6 +32,39 @@ try:
     print(f"[diag] แพ็กเกจ opencv ที่ติดตั้งจริงบนเซิร์ฟเวอร์นี้: {_opencv_pkgs}")
 except Exception as _diag_e:
     print(f"[diag] เช็ครายชื่อแพ็กเกจ opencv ไม่สำเร็จ: {type(_diag_e).__name__}: {_diag_e}")
+
+# [fix] แก้ที่ runtime แทนที่จะพึ่ง build order: ติดตั้ง opencv headless ซ้ำอีกรอบลงไปที่ /tmp (พื้นที่
+# เดียวที่เขียนได้บน serverless filesystem แบบ read-only ของ Vercel) แล้วเอา path นั้นแปะไว้หน้าสุดของ
+# sys.path ก่อน import cv2 เพื่อบังคับให้ python โหลด cv2 จากตรงนี้เสมอ ไม่สนใจว่า site-packages ที่
+# bundle มาจาก build จะเป็นตัวไหนก็ตาม (deterministic 100% ไม่ต้องพึ่งดวงเรื่องลำดับติดตั้งของ uv อีกแล้ว)
+# ทำครั้งเดียวต่อ container (เช็คจากไฟล์ .done) รอบถัดๆ ไปที่ container นี้ยัง warm อยู่จะข้ามขั้นตอนนี้ไปเลย
+_CV2_FIX_DIR = os.path.join(tempfile.gettempdir(), "cv2_headless_fix")
+_CV2_FIX_MARKER = os.path.join(_CV2_FIX_DIR, ".done")
+try:
+    if not os.path.exists(_CV2_FIX_MARKER):
+        import subprocess
+        print("[cv2-fix] กำลังติดตั้ง opencv-*-headless ซ้ำลง /tmp เพื่อบังคับให้ python ใช้ตัวนี้แทนตัวที่ "
+              "อาจโดน opencv-contrib-python (ไม่ headless) ทับตอน build...")
+        _cv2_fix_result = subprocess.run(
+            [sys.executable, "-m", "pip", "install",
+             "--target", _CV2_FIX_DIR, "--no-deps", "--quiet",
+             "opencv-python-headless<5", "opencv-contrib-python-headless<5"],
+            capture_output=True, text=True, timeout=90,
+        )
+        if _cv2_fix_result.returncode == 0:
+            os.makedirs(_CV2_FIX_DIR, exist_ok=True)
+            with open(_CV2_FIX_MARKER, "w") as _f:
+                _f.write("ok")
+            print("[cv2-fix] ติดตั้งสำเร็จ")
+        else:
+            print(f"[cv2-fix] pip install ล้มเหลว (returncode={_cv2_fix_result.returncode}): "
+                  f"{_cv2_fix_result.stderr[-500:]}")
+    if os.path.exists(_CV2_FIX_MARKER):
+        sys.path.insert(0, _CV2_FIX_DIR)
+        print(f"[cv2-fix] เอา {_CV2_FIX_DIR} ไปไว้หน้าสุดของ sys.path แล้ว")
+except Exception as _cv2_fix_e:
+    print(f"[cv2-fix] เกิดข้อผิดพลาดตอนพยายามแก้ opencv: {type(_cv2_fix_e).__name__}: {_cv2_fix_e} "
+          "-> จะลอง import cv2 จาก site-packages ปกติต่อไป (อาจจะพังถ้าโดนตัวไม่ headless ทับอยู่)")
 
 import cv2
 import numpy as np
