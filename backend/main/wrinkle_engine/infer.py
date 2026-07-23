@@ -13,6 +13,7 @@ so the app keeps working either way.
 """
 
 import os
+import shutil
 import tempfile
 
 import numpy as np
@@ -45,17 +46,51 @@ _CACHE_DIR = os.path.join(tempfile.gettempdir(), "omniskin_weights")
 EXCLUDE_LABELS = [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 16, 17, 18]
 
 
+# เผื่อพื้นที่ไว้ให้ไฟล์อื่นๆ ที่ต้องเขียนลง /tmp ระหว่างวิเคราะห์ภาพด้วย (ไฟล์ weight อีกตัว,
+# รูปผลลัพธ์ทั้ง 7 ใบ, cache ของ Ultralytics ฯลฯ) ไม่ใช้พื้นที่ /tmp จนเกลี้ยงหมดแม้แต่ตัวเดียว
+_TMP_SAFETY_MARGIN_BYTES = 80 * 1024 * 1024  # 80MB
+
+
 def _download_file(url, dest_path):
     import requests
     os.makedirs(os.path.dirname(dest_path), exist_ok=True)
     tmp_path = dest_path + ".part"
-    with requests.get(url, stream=True, timeout=120) as r:
-        r.raise_for_status()
-        with open(tmp_path, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024 * 1024):
-                if chunk:
-                    f.write(chunk)
-    os.replace(tmp_path, dest_path)
+    try:
+        with requests.get(url, stream=True, timeout=120) as r:
+            r.raise_for_status()
+
+            # เช็ค Content-Length เทียบกับพื้นที่ว่างจริงบน /tmp ก่อนเริ่มเขียนไฟล์เลย -- /tmp บน Vercel
+            # จำกัดไว้แค่ 500MB รวมทั้งหมด (ไม่ใช่แค่ไฟล์นี้ไฟล์เดียว) ถ้าไฟล์ที่จะโหลดใหญ่เกินพื้นที่ว่างจริง
+            # (เผื่อ margin ไว้ให้ไฟล์อื่นด้วย) ต้องยกเลิกทันทีตั้งแต่ก่อนเขียนอะไรลงดิสก์เลย ไม่งั้นจะเขียน
+            # ไปเรื่อยๆ จนเจอ OSError: [Errno 28] No space left on device กลางทาง แล้วทิ้งไฟล์ .part ค้างไว้
+            # ขนาดเกือบเต็ม /tmp บล็อกการเขียนไฟล์อื่นๆ ทั้งหมดไปจนกว่า container จะถูกรีไซเคิล (บั๊กที่เจอจริง)
+            content_length = r.headers.get("Content-Length")
+            if content_length is not None:
+                needed = int(content_length)
+                free = shutil.disk_usage(tempfile.gettempdir()).free
+                if needed > free - _TMP_SAFETY_MARGIN_BYTES:
+                    raise OSError(
+                        f"ไฟล์ที่จะดาวน์โหลด ({needed / 1024 / 1024:.0f} MB) ใหญ่กว่าพื้นที่ว่างจริงบน "
+                        f"{tempfile.gettempdir()} ที่เหลืออยู่ ({free / 1024 / 1024:.0f} MB หัก margin "
+                        f"{_TMP_SAFETY_MARGIN_BYTES / 1024 / 1024:.0f} MB) -- ยกเลิกก่อนเริ่มเขียนไฟล์เพื่อ "
+                        "กันไม่ให้ /tmp เต็มจนไฟล์อื่นเขียนไม่ได้ไปด้วย"
+                    )
+
+            with open(tmp_path, "wb") as f:
+                for chunk in r.iter_content(chunk_size=1024 * 1024):
+                    if chunk:
+                        f.write(chunk)
+        os.replace(tmp_path, dest_path)
+    except Exception:
+        # ล้มเหลวไม่ว่าสาเหตุอะไรก็ตาม (No space left on device, timeout, ปฏิเสธการเชื่อมต่อ ฯลฯ) ต้องลบ
+        # ไฟล์ .part ที่เขียนค้างไว้ทิ้งทันที ไม่งั้นไฟล์เศษที่เขียนไปแล้ว (อาจเกือบเต็มพื้นที่ที่เหลือทั้งหมด)
+        # จะค้างอยู่บน /tmp บล็อกการเขียนไฟล์อื่นๆ ไปตลอดอายุของ container นี้ (บั๊กที่เจอจริง)
+        try:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _looks_like_html_or_text(path, label):

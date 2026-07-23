@@ -215,13 +215,46 @@ def _cleanup_old_result_files():
 #     endpoint /get-image แยกต่างหากที่ต้องอ่านไฟล์ทีหลัง (ซึ่งบน serverless เช่น Vercel คำขอที่สองอาจไป
 #     ตกที่ container/instance คนละตัวกับที่เขียนไฟล์ไว้ ทำให้หารูปไม่เจอ) ลบไฟล์ทิ้งทันทีหลังอ่านเสร็จ
 #     เพื่อไม่ให้ /tmp สะสมรูปใบหน้าผู้ใช้ค้างไว้โดยไม่จำเป็นในกรณี container ถูกใช้ซ้ำ (warm start)
+#
+# Vercel Functions จำกัดขนาด response body ไว้ที่ 4.5MB ต่อคำขอ (เกินแล้วได้ 413
+# FUNCTION_PAYLOAD_TOO_LARGE) เดิมไฟล์แต่ละใบเซฟด้วย JPEG quality 100 (แทบไม่บีบอัดเลย) จากภาพต้นฉบับ
+# ความละเอียดเต็ม (กล้องมือถือสมัยนี้ 3000-4000px+) พอรวม 7 ใบเป็น base64 (เพิ่มขนาด ~33%) ในคำขอเดียว
+# มีโอกาสสูงมากที่จะเกิน 4.5MB ได้ง่ายๆ โดยเฉพาะบน production จริง (localhost ไม่มีข้อจำกัดนี้เลยดูเหมือน
+# ใช้งานได้ปกติ แต่พอ deploy ขึ้น Vercel รูปในการ์ดผลลัพธ์กลับไม่ขึ้นเลย) จุดนี้จึงย่อขนาด + ลดคุณภาพ JPEG
+# เฉพาะตอนเข้ารหัสส่งกลับไปแสดงผล (ไม่กระทบไฟล์ต้นฉบับคุณภาพเต็มที่เซฟไว้ตอนวิเคราะห์) ให้เล็กพอจะส่งได้
+# แน่นอนเสมอ โดยยังคมชัดเกินพอสำหรับขนาดการ์ดที่แสดงจริงบนหน้าเว็บ (~200px)
+_MAX_RESPONSE_IMG_DIM = 900
+_RESPONSE_JPEG_QUALITY = 82
+
+
 def _read_result_as_data_uri(session_id, kind):
     path = result_filename(session_id, kind)
     try:
-        with open(path, "rb") as f:
-            data = f.read()
-        return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
-    except OSError:
+        img = cv2.imread(path)
+        if img is None:
+            print(f"[_read_result_as_data_uri] cv2.imread คืนค่า None สำหรับ {path} (kind={kind}) "
+                  "-- ไฟล์อาจเขียนไม่สำเร็จ/เสียหายตอน analyze_* เซฟไว้ก่อนหน้านี้")
+            return None
+
+        original_kb = os.path.getsize(path) / 1024
+        h, w = img.shape[:2]
+        longest = max(h, w)
+        if longest > _MAX_RESPONSE_IMG_DIM:
+            scale = _MAX_RESPONSE_IMG_DIM / float(longest)
+            img = cv2.resize(img, (max(1, int(w * scale)), max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+
+        ok, buf = cv2.imencode(".jpg", img, [int(cv2.IMWRITE_JPEG_QUALITY), _RESPONSE_JPEG_QUALITY])
+        if not ok:
+            print(f"[_read_result_as_data_uri] cv2.imencode ล้มเหลวสำหรับ {path} (kind={kind})")
+            return None
+
+        data_uri = "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode("ascii")
+        print(f"[_read_result_as_data_uri] kind={kind} ขนาดหลังย่อ/บีบอัดเพื่อส่งกลับ: "
+              f"{len(data_uri) / 1024:.0f} KB (ไฟล์ต้นฉบับ {original_kb:.0f} KB)")
+        return data_uri
+    except Exception as e:
+        print(f"[_read_result_as_data_uri] เกิดข้อผิดพลาดตอนอ่าน/เข้ารหัสรูป {path} (kind={kind}): "
+              f"{type(e).__name__}: {e}")
         return None
     finally:
         try:
