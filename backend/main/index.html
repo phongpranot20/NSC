@@ -460,7 +460,7 @@
             <p>ระบบผู้ช่วยวิเคราะห์สุขภาพผิวหน้าด้วย AI</p>
         </div>
         <div class="badge-chip"><span class="dot"></span> AI Dermatology Assistant</div>
-        <button type="button" class="train-info-btn" id="btn-open-train-info">📊 <span class="label">ข้อมูลการเทรนโมเดล</span></button>
+        <button type="button" class="train-info-btn" id="btn-open-train-info"><span class="label">ข้อมูลการเทรนโมเดล</span></button>
     </nav>
 
     <!-- ป็อปอัพข้อมูลการเทรนโมเดล AI ตรวจจับสิว (ข้อมูลจริงจากผลการเทรน YOLOv8n 50 epochs) -->
@@ -670,7 +670,7 @@
     </div> <!-- /#app-shell -->
 
     <!-- ฝั่งจัดการตรรกะคำสั่งรับส่งและพรีวิวภาพถ่าย (JavaScript) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.0/chart.umd.min.js"></script>
     <script>
         // 0. ปุ่ม Start: ปิดหน้า landing แล้วเปิดแอปหลัก
         const landingScreen = document.getElementById('landing-screen');
@@ -1074,9 +1074,20 @@
             const btnCloseTrainInfo = document.getElementById('btn-close-train-info');
             let chartsBuilt = false;
 
+            function showChartLoadError() {
+                ['chart-accuracy', 'chart-loss', 'chart-classes'].forEach(function (id) {
+                    const canvas = document.getElementById(id);
+                    if (!canvas) return;
+                    const box = canvas.closest('.train-chart-box');
+                    if (box) box.innerHTML = '<p style="color:var(--ink-500);font-size:12.5px;text-align:center;padding-top:100px;">โหลดกราฟไม่สำเร็จ (อินเทอร์เน็ตอาจไม่เชื่อมต่อ หรือ Chart.js โหลดไม่ขึ้น) ลองรีเฟรชหน้าเว็บอีกครั้ง</p>';
+                });
+            }
+
             function buildCharts() {
-                if (chartsBuilt || typeof Chart === 'undefined') return;
+                if (chartsBuilt) return;
+                if (typeof Chart === 'undefined') { showChartLoadError(); return; }
                 chartsBuilt = true;
+                try {
                 const gridColor = 'rgba(120,190,255,0.10)';
                 const tickColor = 'rgba(190,215,245,0.62)';
                 Chart.defaults.color = tickColor;
@@ -1148,6 +1159,10 @@
                         },
                     },
                 });
+                } catch (chartErr) {
+                    console.error('[train-info] สร้างกราฟไม่สำเร็จ:', chartErr);
+                    showChartLoadError();
+                }
             }
 
             function openTrainModal() {
