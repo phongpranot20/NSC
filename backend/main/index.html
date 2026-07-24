@@ -429,6 +429,25 @@
         }
         .train-meta-note { font-size: 11.5px; color: var(--ink-300); margin-top: 8px; line-height: 1.6; }
         .train-modal-hidden { display: none; }
+
+        /* ===== การ์ดสรุป Train/Valid/Test split (บนสุดของป็อปอัพ) ===== */
+        .train-split-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 18px 0 6px; }
+        @media (max-width: 640px) { .train-split-grid { grid-template-columns: 1fr; } }
+        .train-split-card {
+            border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px;
+            background: rgba(255,255,255,0.03); position: relative;
+        }
+        .train-split-card .split-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+        .train-split-card .split-tag { font-size: 10.5px; font-weight: 700; letter-spacing: 0.4px; color: var(--ink-500); text-transform: uppercase; }
+        .train-split-card .split-pct { font-size: 11px; font-weight: 800; padding: 3px 10px; border-radius: 999px; }
+        .train-split-card .split-count { font-size: 22px; font-weight: 800; color: var(--ink-900); }
+        .train-split-card .split-count span { font-size: 12px; font-weight: 500; color: var(--ink-500); margin-left: 4px; }
+        .train-split-card.split-train { border-color: rgba(251,191,36,0.4); }
+        .train-split-card.split-train .split-pct { background: rgba(251,191,36,0.18); color: var(--warn); }
+        .train-split-card.split-valid { border-color: rgba(56,189,248,0.4); }
+        .train-split-card.split-valid .split-pct { background: rgba(56,189,248,0.18); color: var(--cyan-500); }
+        .train-split-card.split-test { border-color: rgba(167,139,250,0.4); }
+        .train-split-card.split-test .split-pct { background: rgba(167,139,250,0.18); color: #a78bfa; }
     </style>
 </head>
 <body>
@@ -473,6 +492,22 @@
                 </div>
                 <button type="button" class="train-modal-close" id="btn-close-train-info">✕</button>
             </div>
+
+            <div class="train-split-grid">
+                <div class="train-split-card split-train">
+                    <div class="split-top"><span class="split-tag">Train Set</span><span class="split-pct">88%</span></div>
+                    <div class="split-count">19,872<span>Images</span></div>
+                </div>
+                <div class="train-split-card split-valid">
+                    <div class="split-top"><span class="split-tag">Valid Set</span><span class="split-pct">8%</span></div>
+                    <div class="split-count">1,892<span>Images</span></div>
+                </div>
+                <div class="train-split-card split-test">
+                    <div class="split-top"><span class="split-tag">Test Set</span><span class="split-pct">4%</span></div>
+                    <div class="split-count">946<span>Images</span></div>
+                </div>
+            </div>
+            <p class="train-meta-note">รวมทั้งหมด 22,710 ภาพ — แบ่งโดย Roboflow อัตโนมัติตอนสร้าง dataset version (acne-ijcab v2)</p>
 
             <div class="train-stats-grid">
                 <div class="train-stat-card"><div class="val">46.3%</div><div class="lbl">Precision</div></div>
