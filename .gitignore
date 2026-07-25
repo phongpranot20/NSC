@@ -30,3 +30,24 @@ desktop.ini
 
 .vercel
 .env*
+
+# ===== ไฟล์/โฟลเดอร์สำหรับเทรน-ทดสอบโมเดลในเครื่องเท่านั้น ไม่เกี่ยวกับตัวเว็บที่ deploy =====
+venv/
+runs/
+Acne-1/
+Acne-2/
+train_log.txt
+test_eval_log.txt
+train_acne.py
+test_eval.py
+setup_and_train.bat
+run_test_eval.bat
+README_TRAIN_LOCAL.txt
+yolov8n.pt
+yolo26n.pt
+*.docx
+
+# ===== โฟลเดอร์สำรอง/ขยะที่เกิดจากการทำงานก่อนหน้า ไม่ควรอยู่ใน git =====
+.git_trash_ignore_me/
+.old_backend_frontend_files/
+.revert_trash_ignore_me_*/
